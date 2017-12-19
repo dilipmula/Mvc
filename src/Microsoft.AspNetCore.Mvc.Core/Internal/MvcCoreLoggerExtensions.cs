@@ -95,6 +95,16 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
         private static readonly Action<ILogger, MethodInfo, string, string, Exception> _inferredParameterSource;
         private static readonly Action<ILogger, MethodInfo, Exception> _unableToInferParameterSources;
+        private static readonly Action<ILogger, IModelBinderProvider[], Exception> _registeredModelBinderProviders;
+        private static readonly Action<ILogger, string, Type, Type, string, Exception> _tryingToBindPropertyModel;
+        private static readonly Action<ILogger, string, Type, string, Exception> _tryingToBindModel;
+        private static readonly Action<ILogger, string, string, Type, Type, Exception> _foundNoValueForPropertyOnRequest;
+        private static readonly Action<ILogger, string, string, Type, Exception> _foundNoValueForParameterOnRequest;
+        private static readonly Action<ILogger, string, Type, Exception> _noPublicSettableProperties;
+        private static readonly Action<ILogger, Type, Exception> _cannotBindToComplexType;
+        private static readonly Action<ILogger, string, Type, Exception> _cannotBindToFilesCollectionDueToInvalidContentType;
+        private static readonly Action<ILogger, Type, Exception> _cannotCreateHeaderModelBinder;
+        private static readonly Action<ILogger, Exception> _noFilesFoundOnTheRequest;
 
         private static readonly Action<ILogger, string, Exception> _unsupportedFormatFilterContentType;
         private static readonly Action<ILogger, string, MediaTypeCollection, Exception> _actionDoesNotSupportFormatFilterContentType;
@@ -368,6 +378,53 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 LogLevel.Debug,
                 5,
                 "Current action does not explicitly specify any content types for the response.");
+
+            _registeredModelBinderProviders = LoggerMessage.Define<IModelBinderProvider[]>(
+                LogLevel.Debug,
+                6,
+                "Registered model binder providers, in the following order: {ModelBinderProviders}");
+
+            _tryingToBindPropertyModel = LoggerMessage.Define<string, Type, Type, string>(
+               LogLevel.Debug,
+               7,
+               "Trying to bind property '{PropertyName}'[{ModelType}] on type '{PropertyContainerType}' using the model name '{ModelName}' in request data.");
+
+            _tryingToBindModel = LoggerMessage.Define<string, Type, string>(
+               LogLevel.Debug,
+               8,
+               "Trying to bind '{ParameterName}'[{ModelType}] using the model name '{ModelName}' in request data.");
+
+            _foundNoValueForPropertyOnRequest = LoggerMessage.Define<string, string, Type, Type>(
+               LogLevel.Debug,
+               9,
+               "Could not find a value on the request with name '{ModelName}' for binding property '{ModelFieldName}'[{ModelType}] on type '{PropertyContainerType}'.");
+
+            _foundNoValueForParameterOnRequest = LoggerMessage.Define<string, string, Type>(
+               LogLevel.Debug,
+               9,
+               "Could not find a value on the request with name '{ModelName}' for binding parameter '{ModelFieldName}'[{ModelType}].");
+
+            _noPublicSettableProperties = LoggerMessage.Define<string, Type>(
+               LogLevel.Debug,
+               10,
+               "Could not bind to model with name '{ModelName}' and type '{ModelType}' as there were no public settable properties on it.");
+
+            _cannotBindToComplexType = LoggerMessage.Define<Type>(
+               LogLevel.Debug,
+               11,
+               "Could not bind to model of type '{ModelType}' as there were no values for any of the properties on the request to bind from.");
+
+            _cannotBindToFilesCollectionDueToInvalidContentType = LoggerMessage.Define<string, Type>(
+               LogLevel.Debug,
+               12,
+               "Could not bind to model with name {ModelName} having the model type {ModelType} as the request did not have content type of either 'application/x-www-form-urlencoded' or 'multipart/form-data'.");
+
+            _cannotCreateHeaderModelBinder = LoggerMessage.Define<Type>(
+               LogLevel.Debug,
+               13,
+               "Could not create binder to bind model with type {ModelType} as this binder only supports 'System.String' type or collection of 'System.String' type.");
+
+            _noFilesFoundOnTheRequest = LoggerMessage.Define(LogLevel.Debug, 14, "No files found on the request to bind the model to.");
         }
 
         public static IDisposable ActionScope(this ILogger logger, ActionDescriptor action)
@@ -810,6 +867,97 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 _unableToInferParameterSources(logger, actionModel.ActionMethod, null);
             }
+        }
+
+        public static void RegisteredModelBinderProviders(this ILogger logger, IModelBinderProvider[] providers)
+        {
+            _registeredModelBinderProviders(logger, providers, null);
+        }
+
+        public static void TryingToBindModel(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            var isProperty = bindingContext.ModelMetadata.ContainerType != null;
+            if (isProperty)
+            {
+                _tryingToBindPropertyModel(
+                    logger,
+                    bindingContext.ModelMetadata.PropertyName,
+                    bindingContext.ModelType,
+                    bindingContext.ModelMetadata.ContainerType,
+                    bindingContext.ModelName,
+                    null);
+            }
+            else
+            {
+                _tryingToBindModel(
+                    logger,
+                    bindingContext.FieldName,
+                    bindingContext.ModelType,
+                    bindingContext.ModelName,
+                    null);
+            }
+        }
+
+        public static void FoundNoValueOnRequest(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            if (!logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            var modelMetadata = bindingContext.ModelMetadata;
+            var isProperty = modelMetadata.ContainerType != null;
+
+            var modelName = bindingContext.ModelName;
+            if (string.IsNullOrEmpty(modelName))
+            {
+                modelName = modelMetadata.BinderModelName ?? modelMetadata.PropertyName;
+            }
+
+            if (isProperty)
+            {
+                _foundNoValueForPropertyOnRequest(
+                    logger,
+                    modelName,
+                    modelMetadata.PropertyName,
+                    bindingContext.ModelType,
+                    modelMetadata.ContainerType,
+                    null);
+            }
+            else
+            {
+                _foundNoValueForParameterOnRequest(
+                    logger,
+                    modelName,
+                    modelMetadata.PropertyName,
+                    bindingContext.ModelType,
+                    null);
+            }
+        }
+
+        public static void NoPublicSettableProperties(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _noPublicSettableProperties(logger, bindingContext.ModelName, bindingContext.ModelType, null);
+        }
+
+        public static void CannotBindToComplexType(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _cannotBindToComplexType(logger, bindingContext.ModelType, null);
+        }
+
+        public static void CannotBindToFilesCollectionDueToInvalidContentType(this ILogger logger, ModelBindingContext bindingContext)
+        {
+            _cannotBindToFilesCollectionDueToInvalidContentType(logger, bindingContext.ModelName, bindingContext.ModelType, null);
+        }
+
+        public static void CannotCreateHeaderModelBinder(this ILogger logger, Type modelType)
+        {
+            _cannotCreateHeaderModelBinder(logger, modelType, null);
+        }
+
+        public static void NoFilesFoundOnTheRequest(this ILogger logger)
+        {
+            _noFilesFoundOnTheRequest(logger, null);
         }
 
         private static void LogFilterExecutionPlan(
