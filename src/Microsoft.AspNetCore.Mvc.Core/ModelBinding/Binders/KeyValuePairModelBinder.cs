@@ -63,8 +63,6 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
                 throw new ArgumentNullException(nameof(bindingContext));
             }
 
-            logger.TryingToBindModel(bindingContext);
-            
             var keyModelName = ModelNames.CreatePropertyModelName(bindingContext.ModelName, "Key");
             var keyResult = await TryBindStrongModel<TKey>(bindingContext, _keyBinder, "Key", keyModelName);
 
